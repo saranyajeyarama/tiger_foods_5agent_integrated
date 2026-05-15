@@ -1,0 +1,30 @@
+{
+  "_comment": "Firestore composite indexes for the Tiger Foods agentic AI. Apply with: gcloud firestore indexes composite create --collection-group=steps --query-scope=COLLECTION --field-config field-path=session_id,order=ASCENDING --field-config field-path=step_index,order=ASCENDING. Most queries are covered by Firestore's automatic single-field indexes; the explicit indexes below are only needed if the UI does collection-group queries across sessions.",
+  "indexes": [
+    {
+      "collectionGroup": "steps",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "agent", "order": "ASCENDING" },
+        { "fieldPath": "timestamp_iso", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "steps",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "action", "order": "ASCENDING" },
+        { "fieldPath": "timestamp_iso", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "agent_sessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "started_at", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

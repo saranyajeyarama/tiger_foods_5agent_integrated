@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-ChildItem -Path \"d:\\\\workspace\\\\tiger_foods_5agent_integrated\" -Recurse -File | Where-Object {$_.Extension -match \"^\\\\.\\(env|config|conf|txt|sh|bat|yaml|yml\\)$\"} | Select-Object -ExpandProperty FullName)"
+    ]
+  }
+}

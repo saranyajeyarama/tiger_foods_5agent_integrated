@@ -1,0 +1,12 @@
+# Tiger Foods Agentic AI orchestrator — v2 dependencies
+# Same surface as v1; v2 introduces no new runtime libraries.
+
+fastapi
+uvicorn[standard]
+pydantic
+google-adk==1.0.0
+google-cloud-aiplatform
+google-cloud-bigquery
+google-cloud-firestore
+google-cloud-secret-manager
+python-dateutil

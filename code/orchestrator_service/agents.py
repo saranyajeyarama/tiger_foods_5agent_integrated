@@ -23,13 +23,7 @@ from adk_tools import WATCHDOG_TOOLS, ECONOMIST_TOOLS, EXECUTOR_TOOLS
 from schemas import WatchdogAlert, EconomistAnalysis, ExecutorActionCard
 
 
-# Resolve the prompts directory whether running locally or in Cloud Run.
-# If PROMPTS_DIR env var is set but points to a missing directory, fall back
-# to the path relative to this file so stale env vars don't break the service.
-_DEFAULT_PROMPTS_DIR = Path(__file__).parent.parent.parent / "agents"
-_env_prompts_dir = os.environ.get("PROMPTS_DIR")
-_env_path = Path(_env_prompts_dir) if _env_prompts_dir else None
-PROMPTS_DIR = _env_path if (_env_path and _env_path.is_dir()) else _DEFAULT_PROMPTS_DIR
+PROMPTS_DIR = Path(__file__).parent.parent.parent / "agents"
 
 
 def _load_prompt(name: str) -> str:

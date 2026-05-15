@@ -28,11 +28,8 @@ CDM domain map (which CDM domain each tool reads from):
 Reuses _run_query and the BigQuery client from adk_tools (v1).
 """
 
-from __future__ import annotations
-
 import os
 from datetime import date
-from typing import Literal, Optional
 
 from google.adk.tools import FunctionTool
 from google.cloud import bigquery
@@ -53,11 +50,20 @@ from adk_tools import (
 # Sales & Orders — new tools
 # ---------------------------------------------------------------------------
 def get_open_sales_orders(
-    customer_kunnr: Optional[str] = None,
-    material_matnr: Optional[str] = None,
-    horizon_days: int = 30,
+    customer_kunnr: str,
+    material_matnr: str,
+    horizon_days: int,
 ) -> dict:
-    """Open sales orders for a customer × SKU within a forward horizon."""
+    """Open sales orders for a customer × SKU within a forward horizon.
+
+    Args:
+        customer_kunnr: Customer filter. Pass empty string for all customers.
+        material_matnr: Material filter. Pass empty string for all materials.
+        horizon_days: Days forward to look. Pass 0 to use default of 30.
+    """
+    customer_kunnr = customer_kunnr or ""
+    material_matnr = material_matnr or ""
+    horizon_days = horizon_days or 30
     where = ["status IN ('OPEN', 'CONFIRMED')",
              "requested_delivery_date <= DATE_ADD(CURRENT_DATE(), "
              "INTERVAL @days DAY)"]
@@ -89,10 +95,15 @@ def get_open_sales_orders(
 def get_order_history(
     customer_kunnr: str,
     material_matnr: str,
-    lookback_weeks: int = 12,
+    lookback_weeks: int,
 ) -> dict:
     """Historical order pattern for a customer × SKU. Used by Demand
-    Planning Agent for above-forecast classification."""
+    Planning Agent for above-forecast classification.
+
+    Args:
+        lookback_weeks: Weeks to look back. Pass 0 to use default of 12.
+    """
+    lookback_weeks = lookback_weeks or 12
     params = [
         bigquery.ScalarQueryParameter("kunnr", "STRING", customer_kunnr),
         bigquery.ScalarQueryParameter("matnr", "STRING", material_matnr),
@@ -118,14 +129,16 @@ def get_order_history(
 def classify_order_vs_forecast(
     customer_kunnr: str,
     material_matnr: str,
-    week: Optional[str] = None,
+    week: str,
 ) -> dict:
     """Compares an ordered quantity to the demand plan for the same
     customer × SKU × week. Returns plan number and above_forecast flag.
     Used by Demand Planning Agent and Customer Supply Agent.
 
-    `week` is an ISO week string like '2026-W21'; if None uses current week.
+    Args:
+        week: ISO week string like '2026-W21'. Pass empty string for current week.
     """
+    week = week or ""
     params = [
         bigquery.ScalarQueryParameter("kunnr", "STRING", customer_kunnr),
         bigquery.ScalarQueryParameter("matnr", "STRING", material_matnr),
@@ -185,12 +198,16 @@ def classify_order_vs_forecast(
 # ---------------------------------------------------------------------------
 def get_finished_goods_inventory(
     material_matnr: str,
-    plant: Optional[str] = None,
-    include_shelf_life: bool = True,
+    plant: str,
+    include_shelf_life: bool,
 ) -> dict:
     """Current FG position for a SKU, optionally filtered by plant.
-    Aliased to the v1 inventory tool with FG-specific signature for
-    the Supply Planning Agent's mental model."""
+
+    Args:
+        plant: Plant filter. Pass empty string for all plants.
+        include_shelf_life: Pass true to include expiry dates.
+    """
+    plant = plant or ""
     where = ["movement_date = CURRENT_DATE()", "material_matnr = @matnr"]
     params = [bigquery.ScalarQueryParameter("matnr", "STRING", material_matnr)]
     if plant:
@@ -220,9 +237,14 @@ def get_finished_goods_inventory(
 
 def get_safety_stock_position(
     material_matnr: str,
-    plant: Optional[str] = None,
+    plant: str,
 ) -> dict:
-    """Safety stock vs target days-of-cover."""
+    """Safety stock vs target days-of-cover.
+
+    Args:
+        plant: Plant filter. Pass empty string for all plants.
+    """
+    plant = plant or ""
     where = ["material_matnr = @matnr"]
     params = [bigquery.ScalarQueryParameter("matnr", "STRING", material_matnr)]
     if plant:
@@ -248,10 +270,17 @@ def get_safety_stock_position(
 # ---------------------------------------------------------------------------
 def get_production_orders(
     material_matnr: str,
-    horizon_days: int = 14,
-    status_filter: Optional[str] = None,
+    horizon_days: int,
+    status_filter: str,
 ) -> dict:
-    """Upcoming production orders for a SKU within a horizon."""
+    """Upcoming production orders for a SKU within a horizon.
+
+    Args:
+        horizon_days: Days forward to look. Pass 0 to use default of 14.
+        status_filter: Order status to filter (e.g. RELEASED). Pass empty string for all statuses.
+    """
+    horizon_days = horizon_days or 14
+    status_filter = status_filter or ""
     where = ["material_matnr = @matnr",
              "scheduled_completion_date <= DATE_ADD(CURRENT_DATE(), "
              "INTERVAL @days DAY)"]
@@ -259,7 +288,7 @@ def get_production_orders(
         bigquery.ScalarQueryParameter("matnr", "STRING", material_matnr),
         bigquery.ScalarQueryParameter("days", "INT64", horizon_days),
     ]
-    if status_filter:
+    if status_filter:  # empty string means no filter
         where.append("status = @status")
         params.append(bigquery.ScalarQueryParameter(
             "status", "STRING", status_filter))
@@ -328,11 +357,18 @@ def get_raw_materials_status(
 # Procurement
 # ---------------------------------------------------------------------------
 def get_procurement_orders(
-    horizon_days: int = 30,
-    vendor_id: Optional[str] = None,
+    horizon_days: int,
+    vendor_id: str,
 ) -> dict:
     """Inbound procurement orders. Used by Supply Planning Agent for
-    forward RM ETA visibility."""
+    forward RM ETA visibility.
+
+    Args:
+        horizon_days: Days forward to look. Pass 0 to use default of 30.
+        vendor_id: Vendor filter. Pass empty string for all vendors.
+    """
+    horizon_days = horizon_days or 30
+    vendor_id = vendor_id or ""
     where = ["expected_receipt_date <= DATE_ADD(CURRENT_DATE(), "
              "INTERVAL @days DAY)",
              "status IN ('OPEN', 'IN_TRANSIT')"]
@@ -397,10 +433,16 @@ def get_customer_compliance_rules(
 def get_lane_capacity(
     origin_plant: str,
     destination_region: str,
-    ship_date: Optional[str] = None,
-    quantity_cs: int = 0,
+    ship_date: str,
+    quantity_cs: int,
 ) -> dict:
-    """Lane-level capacity and viability check."""
+    """Lane-level capacity and viability check.
+
+    Args:
+        ship_date: ISO date for the shipment. Pass empty string if not filtering by date.
+        quantity_cs: Quantity in cases to check capacity for. Pass 0 if unknown.
+    """
+    ship_date = ship_date or ""
     params = [
         bigquery.ScalarQueryParameter("origin", "STRING", origin_plant),
         bigquery.ScalarQueryParameter("dest", "STRING", destination_region),
@@ -433,9 +475,14 @@ def get_lane_capacity(
 def get_carrier_otp(
     origin_plant: str,
     destination_region: str,
-    trailing_days: int = 30,
+    trailing_days: int,
 ) -> dict:
-    """Carrier on-time performance on a lane."""
+    """Carrier on-time performance on a lane.
+
+    Args:
+        trailing_days: Days to look back. Pass 0 to use default of 30.
+    """
+    trailing_days = trailing_days or 30
     params = [
         bigquery.ScalarQueryParameter("origin", "STRING", origin_plant),
         bigquery.ScalarQueryParameter("dest", "STRING", destination_region),
@@ -601,9 +648,14 @@ def get_retail_store_inventory(
 def get_retail_velocity(
     customer_kunnr: str,
     material_matnr: str,
-    weeks_back: int = 8,
+    weeks_back: int,
 ) -> dict:
-    """Retailer POS velocity by week. V2: data_available=false."""
+    """Retailer POS velocity by week. V2: data_available=false.
+
+    Args:
+        weeks_back: Weeks to look back. Pass 0 to use default of 8.
+    """
+    weeks_back = weeks_back or 8
     if not _retail_view_exists(RETAIL_VELOCITY_VIEW):
         return {
             "data_available": False,
@@ -640,9 +692,14 @@ def get_retail_velocity(
 
 def get_promotional_calendar(
     customer_kunnr: str,
-    week: Optional[str] = None,
+    week: str,
 ) -> dict:
-    """Promotional calendar from TPM. V2: data_available=false."""
+    """Promotional calendar from TPM. V2: data_available=false.
+
+    Args:
+        week: ISO week string like '2026-W21'. Pass empty string for all upcoming weeks.
+    """
+    week = week or ""
     if not _retail_view_exists(RETAIL_PROMO_VIEW):
         return {
             "data_available": False,
@@ -677,14 +734,19 @@ def get_promotional_calendar(
 def dce_write(
     session_id: str,
     decision_payload_json: str,
-    user_decision: Literal["approved", "rejected", "cancelled"],
-    user_id: Optional[str] = None,
-    rejection_reason: Optional[str] = None,
+    user_decision: str,
+    user_id: str,
+    rejection_reason: str,
 ) -> dict:
-    """Write a Decision Capture Engine record. Extends v1 log_decision to
-    populate the DCE-specific columns added by infra/dce_alter_table_v2.sql.
+    """Write a Decision Capture Engine record.
 
-    The orchestrator calls this — not the agent."""
+    Args:
+        user_decision: approved | rejected | cancelled.
+        user_id: User who made the decision. Pass empty string if unknown.
+        rejection_reason: Reason for rejection. Pass empty string if approved.
+    """
+    user_id = user_id or ""
+    rejection_reason = rejection_reason or ""
     import json
     import uuid
     from datetime import datetime, timezone

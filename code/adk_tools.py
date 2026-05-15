@@ -21,13 +21,11 @@ Tools (10):
   10. log_decision                 - WRITES tiger_decisions.fct_allocation_decisions
 """
 
-from __future__ import annotations
 
 import json as _json
 import os
 import uuid
 from datetime import date, datetime, timezone
-from typing import Literal, Optional
 
 from google.adk.tools import FunctionTool
 from google.cloud import bigquery
@@ -55,10 +53,10 @@ def _run_query(sql: str, params: list) -> list[dict]:
 # TOOL 1 — get_otif_performance
 # ---------------------------------------------------------------------------
 def get_otif_performance(
-    customer_kunnr: Optional[str] = None,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
-    group_by: Literal["customer", "carrier", "lane", "week"] = "customer",
+    customer_kunnr: str = "",
+    start_date: str = "",
+    end_date: str = "",
+    group_by: str = "customer",
 ) -> dict:
     """Returns OTIF performance from fct_otif, optionally aggregated.
 
@@ -75,10 +73,10 @@ def get_otif_performance(
     params = [
         bigquery.ScalarQueryParameter(
             "start", "DATE",
-            start_date or (date.today().replace(day=1)).isoformat()),
+            start_date if start_date else (date.today().replace(day=1)).isoformat()),
         bigquery.ScalarQueryParameter(
             "end", "DATE",
-            end_date or date.today().isoformat()),
+            end_date if end_date else date.today().isoformat()),
     ]
     if customer_kunnr:
         where.append("customer_kunnr = @kunnr")
@@ -90,7 +88,7 @@ def get_otif_performance(
         "carrier":  "carrier_id, carrier_name",
         "lane":     "origin_plant, destination_region",
         "week":     "FORMAT_DATE('%G-W%V', delivery_date) AS iso_week",
-    }[group_by]
+    }.get(group_by, "customer_kunnr, customer_name")
 
     sql = f"""
       SELECT {group_col},
@@ -117,7 +115,7 @@ def get_otif_performance(
 # ---------------------------------------------------------------------------
 def get_cfr_weekly(
     weeks_back: int = 8,
-    customer_kunnr: Optional[str] = None,
+    customer_kunnr: str = "",
 ) -> dict:
     """Returns weekly Case Fill Rate trend.
 
@@ -152,8 +150,8 @@ def get_cfr_weekly(
 # TOOL 3 — get_inventory_positions
 # ---------------------------------------------------------------------------
 def get_inventory_positions(
-    plant: Optional[str] = None,
-    material_matnr: Optional[str] = None,
+    plant: str = "",
+    material_matnr: str = "",
     include_shelf_life: bool = True,
 ) -> dict:
     """Returns current inventory positions by plant and material.
@@ -203,7 +201,7 @@ def get_inventory_positions(
 # ---------------------------------------------------------------------------
 def get_shelf_life_risk(
     customer_kunnr: str,
-    material_matnr: Optional[str] = None,
+    material_matnr: str = "",
     horizon_days: int = 30,
 ) -> dict:
     """Identifies inventory at MRSL conflict risk for a specific customer.
@@ -256,8 +254,8 @@ def get_shelf_life_risk(
 # ---------------------------------------------------------------------------
 def get_chargeback_risk(
     customer_kunnr: str,
-    shipment_date: Optional[str] = None,
-    fine_rate_override_usd_per_cs: Optional[float] = None,
+    shipment_date: str = "",
+    fine_rate_override_usd_per_cs: float = 0.0,
 ) -> dict:
     """Returns customer fine rates and chargeback exposure.
 
@@ -303,7 +301,7 @@ def get_chargeback_risk(
         return {"error": f"Customer {customer_kunnr} not found in dim_customer",
                 "view_queried": "tiger_semantic.dim_customer"}
     row = rows[0]
-    if fine_rate_override_usd_per_cs is not None:
+    if fine_rate_override_usd_per_cs:
         row["fine_rate_usd_per_cs"] = fine_rate_override_usd_per_cs
     row["view_queried"] = ("tiger_semantic.dim_customer + "
                             "tiger_semantic.fct_chargebacks")
@@ -366,7 +364,7 @@ def get_transfer_cost_comparison(
 # ---------------------------------------------------------------------------
 def get_forecast_accuracy(
     customer_kunnr: str,
-    material_matnr: Optional[str] = None,
+    material_matnr: str = "",
     lag_weeks: int = 4,
 ) -> dict:
     """Returns Anaplan forecast accuracy and bias at a given lag."""
@@ -402,8 +400,8 @@ def get_forecast_accuracy(
 # TOOL 8 — get_allocation_history
 # ---------------------------------------------------------------------------
 def get_allocation_history(
-    customer_kunnr: Optional[str] = None,
-    material_matnr: Optional[str] = None,
+    customer_kunnr: str = "",
+    material_matnr: str = "",
     lookback_days: int = 90,
 ) -> dict:
     """Returns prior allocation decisions for similar contexts.
@@ -465,14 +463,14 @@ def get_allocation_history(
 # TOOL 9 — get_active_alerts
 # ---------------------------------------------------------------------------
 def get_active_alerts(
-    severity_min: Literal["LOW", "MEDIUM", "HIGH", "CRITICAL"] = "MEDIUM",
+    severity_min: str = "MEDIUM",
     limit: int = 20,
 ) -> dict:
     """Returns currently active alerts ranked by exposure."""
     sev_order = {"LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
     params = [
         bigquery.ScalarQueryParameter("min_sev", "INT64",
-                                       sev_order[severity_min]),
+                                       sev_order.get(severity_min.upper(), 2)),
         bigquery.ScalarQueryParameter("lim", "INT64", limit),
     ]
     sql = f"""
@@ -517,9 +515,9 @@ def get_active_alerts(
 def log_decision(
     session_id: str,
     decision_payload_json: str,
-    human_decision: Literal["approved", "rejected", "cancelled"],
-    human_decision_by: Optional[str] = None,
-    rejection_reason: Optional[str] = None,
+    human_decision: str,
+    human_decision_by: str = "",
+    rejection_reason: str = "",
 ) -> dict:
     """Writes the final agentic decision to the writable decision log.
 

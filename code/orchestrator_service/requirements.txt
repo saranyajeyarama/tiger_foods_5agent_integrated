@@ -10,3 +10,4 @@ google-cloud-bigquery
 google-cloud-firestore
 google-cloud-secret-manager
 python-dateutil
+python-dotenv

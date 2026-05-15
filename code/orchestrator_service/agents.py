@@ -60,7 +60,8 @@ def make_watchdog() -> LlmAgent:
         ),
         instruction=_load_prompt("watchdog_system_prompt"),
         tools=WATCHDOG_TOOLS,
-        output_schema=WatchdogAlert,
+        # output_schema is incompatible with tools in ADK LlmAgent;
+        # structured output is enforced via the system prompt instead.
     )
 
 
@@ -81,7 +82,6 @@ def make_economist() -> LlmAgent:
         ),
         instruction=_load_prompt("economist_system_prompt"),
         tools=ECONOMIST_TOOLS,
-        output_schema=EconomistAnalysis,
     )
 
 
@@ -101,7 +101,6 @@ def make_executor() -> LlmAgent:
         ),
         instruction=_load_prompt("executor_system_prompt"),
         tools=EXECUTOR_TOOLS,
-        output_schema=ExecutorActionCard,
     )
 
 

@@ -22,6 +22,7 @@ from typing import Any
 
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
+from google.genai import types as genai_types
 
 from agents import get_agent
 from firestore_client import StepWriter, update_session
@@ -61,13 +62,23 @@ async def _invoke_agent(agent_name: str, prompt_payload: dict,
     )
 
     t0 = _now_ms()
-    user_msg = json.dumps(prompt_payload)
+    user_msg = genai_types.Content(
+        role="user",
+        parts=[genai_types.Part(text=json.dumps(prompt_payload))],
+    )
     response_json: dict | None = None
+
+    adk_session_id = f"adk-{writer.session_id}-{agent_name}-r{round_idx}"
+    await session_svc.create_session(
+        app_name="tiger-agents",
+        user_id="orchestrator",
+        session_id=adk_session_id,
+    )
 
     # ADK Runner yields events: tool_call, tool_response, agent_response.
     async for event in runner.run_async(
         user_id="orchestrator",
-        session_id=f"adk-{writer.session_id}-{agent_name}-r{round_idx}",
+        session_id=adk_session_id,
         new_message=user_msg,
     ):
         # Handle tool calls

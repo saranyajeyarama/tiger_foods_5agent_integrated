@@ -22,9 +22,16 @@ from google.cloud import firestore
 
 
 PROJECT_ID = os.environ.get("PROJECT_ID", "resilience-riskradar")
-_db = firestore.Client(project=PROJECT_ID)
+_db: firestore.Client | None = None
 
 _SESSIONS = "agent_sessions"
+
+
+def _get_db() -> firestore.Client:
+    global _db
+    if _db is None:
+        _db = firestore.Client(project=PROJECT_ID)
+    return _db
 
 
 def _now_iso() -> str:
@@ -36,7 +43,7 @@ def _now_iso() -> str:
 # ---------------------------------------------------------------------------
 def create_session(session_id: str, trigger_type: str,
                    trigger_payload: dict[str, Any]) -> None:
-    _db.collection(_SESSIONS).document(session_id).set({
+    _get_db().collection(_SESSIONS).document(session_id).set({
         "session_id":      session_id,
         "started_at":      firestore.SERVER_TIMESTAMP,
         "ended_at":        None,
@@ -53,11 +60,11 @@ def create_session(session_id: str, trigger_type: str,
 def update_session(session_id: str, **fields: Any) -> None:
     if "ended_at" in fields and fields["ended_at"] == "NOW":
         fields["ended_at"] = firestore.SERVER_TIMESTAMP
-    _db.collection(_SESSIONS).document(session_id).update(fields)
+    _get_db().collection(_SESSIONS).document(session_id).update(fields)
 
 
 def get_session(session_id: str) -> dict[str, Any] | None:
-    snap = _db.collection(_SESSIONS).document(session_id).get()
+    snap = _get_db().collection(_SESSIONS).document(session_id).get()
     return snap.to_dict() if snap.exists else None
 
 
@@ -102,7 +109,7 @@ class StepWriter:
             "bq_job_id":           bq_job_id,
             "notes":               notes,
         }
-        (_db.collection(_SESSIONS)
+        (_get_db().collection(_SESSIONS)
             .document(self.session_id)
             .collection("steps")
             .document(doc_id)

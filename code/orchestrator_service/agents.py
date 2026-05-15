@@ -17,7 +17,6 @@ import os
 from pathlib import Path
 
 from google.adk.agents import LlmAgent
-from google.adk.models import Gemini
 
 from adk_tools import WATCHDOG_TOOLS, ECONOMIST_TOOLS, EXECUTOR_TOOLS
 from schemas import WatchdogAlert, EconomistAnalysis, ExecutorActionCard
@@ -50,17 +49,16 @@ def _load_prompt(name: str) -> str:
 def make_watchdog() -> LlmAgent:
     return LlmAgent(
         name="watchdog",
-        model=Gemini(
-            model_name="gemini-2.5-flash",
-            temperature=0.1,
-        ),
+        model="gemini-2.5-flash",
+        generate_content_config={"temperature": 0.1},
         description=(
             "Risk detector. Reads live Tiger Foods supply data. "
             "Flags OTIF/CFR/shelf-life risks and produces a structured alert."
         ),
         instruction=_load_prompt("watchdog_system_prompt"),
         tools=WATCHDOG_TOOLS,
-        output_schema=WatchdogAlert,
+        # output_schema is incompatible with tools in ADK LlmAgent;
+        # structured output is enforced via the system prompt instead.
     )
 
 
@@ -70,10 +68,8 @@ def make_watchdog() -> LlmAgent:
 def make_economist() -> LlmAgent:
     return LlmAgent(
         name="economist",
-        model=Gemini(
-            model_name="gemini-2.5-pro",
-            temperature=0.2,
-        ),
+        model="gemini-2.5-pro",
+        generate_content_config={"temperature": 0.2},
         description=(
             "Cost optimizer and challenger. Computes the cost of Watchdog's "
             "recommendation plus alternatives, and challenges when math "
@@ -81,7 +77,6 @@ def make_economist() -> LlmAgent:
         ),
         instruction=_load_prompt("economist_system_prompt"),
         tools=ECONOMIST_TOOLS,
-        output_schema=EconomistAnalysis,
     )
 
 
@@ -91,17 +86,14 @@ def make_economist() -> LlmAgent:
 def make_executor() -> LlmAgent:
     return LlmAgent(
         name="executor",
-        model=Gemini(
-            model_name="gemini-2.5-pro",
-            temperature=0.0,
-        ),
+        model="gemini-2.5-pro",
+        generate_content_config={"temperature": 0.0},
         description=(
             "Synthesizer. Consolidates Watchdog and Economist final positions "
             "into a structured action card for human approval."
         ),
         instruction=_load_prompt("executor_system_prompt"),
         tools=EXECUTOR_TOOLS,
-        output_schema=ExecutorActionCard,
     )
 
 

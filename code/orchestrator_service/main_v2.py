@@ -24,6 +24,11 @@ try:
 except ImportError:
     pass
 
+# Disable OpenTelemetry SDK to prevent "Token created in a different Context"
+# errors that occur when ADK's async generators are garbage-collected across
+# asyncio task boundaries.
+os.environ.setdefault("OTEL_SDK_DISABLED", "true")
+
 # Configure ADK auth:
 # - Set GOOGLE_API_KEY in .env for Gemini Developer API (local dev)
 # - Otherwise fall back to Vertex AI via ADC / service-account (Cloud Run)

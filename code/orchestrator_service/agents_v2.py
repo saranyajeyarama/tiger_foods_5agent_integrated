@@ -19,13 +19,6 @@ from adk_tools_v2 import (
     TRANSPORTATION_TOOLS_V2,
     RETAIL_INTELLIGENCE_TOOLS_V2,
 )
-from schemas_v2 import (
-    CustomerSupplyDecision,
-    SupplyPlanningSignal,
-    DemandPlanningSignal,
-    TransportationSignal,
-    RetailIntelligenceSignal,
-)
 
 
 PROMPTS_DIR = Path(__file__).parent.parent.parent / "agents"
@@ -61,7 +54,6 @@ def make_customer_supply_v2() -> LlmAgent:
         ),
         instruction=_load_prompt("customer_supply_agent_v2"),
         tools=CUSTOMER_SUPPLY_TOOLS_V2,
-        output_schema=CustomerSupplyDecision,
     )
 
 
@@ -79,7 +71,6 @@ def make_supply_planning_v2() -> LlmAgent:
         ),
         instruction=_load_prompt("supply_planning_agent_v2"),
         tools=SUPPLY_PLANNING_TOOLS_V2,
-        output_schema=SupplyPlanningSignal,
     )
 
 
@@ -97,7 +88,6 @@ def make_demand_planning_v2() -> LlmAgent:
         ),
         instruction=_load_prompt("demand_planning_agent_v2"),
         tools=DEMAND_PLANNING_TOOLS_V2,
-        output_schema=DemandPlanningSignal,
     )
 
 
@@ -116,7 +106,6 @@ def make_transportation_v2() -> LlmAgent:
         ),
         instruction=_load_prompt("transportation_agent_v2"),
         tools=TRANSPORTATION_TOOLS_V2,
-        output_schema=TransportationSignal,
     )
 
 
@@ -136,7 +125,6 @@ def make_retail_intelligence_v2() -> LlmAgent:
         ),
         instruction=_load_prompt("retail_intelligence_agent_v2"),
         tools=RETAIL_INTELLIGENCE_TOOLS_V2,
-        output_schema=RetailIntelligenceSignal,
     )
 
 

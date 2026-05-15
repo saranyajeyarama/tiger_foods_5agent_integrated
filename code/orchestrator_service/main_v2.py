@@ -24,10 +24,18 @@ try:
 except ImportError:
     pass
 
-# Disable OpenTelemetry SDK to prevent "Token created in a different Context"
-# errors that occur when ADK's async generators are garbage-collected across
-# asyncio task boundaries.
-os.environ.setdefault("OTEL_SDK_DISABLED", "true")
+# Patch opentelemetry.context.detach to suppress the ValueError that fires when
+# ADK's async generators are closed across asyncio task boundaries. The error:
+#   "Token was created in a different Context"
+# is a known incompatibility between otel contextvars and Python async generators.
+import opentelemetry.context as _otel_ctx
+_orig_otel_detach = _otel_ctx.detach
+def _safe_otel_detach(token):
+    try:
+        _orig_otel_detach(token)
+    except ValueError:
+        pass
+_otel_ctx.detach = _safe_otel_detach
 
 # Configure ADK auth:
 # - Set GOOGLE_API_KEY in .env for Gemini Developer API (local dev)

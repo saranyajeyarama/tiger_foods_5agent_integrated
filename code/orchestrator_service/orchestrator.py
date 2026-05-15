@@ -75,48 +75,55 @@ async def _invoke_agent(agent_name: str, prompt_payload: dict,
         session_id=adk_session_id,
     )
 
-    # ADK Runner yields events: tool_call, tool_response, agent_response.
+    # ADK 1.0.0: Runner yields Event objects. Use the proper API:
+    #   event.get_function_calls()     → list of tool invocations
+    #   event.get_function_responses() → list of tool results
+    #   event.is_final_response()      → method (not property)
+    #   event.content.parts            → list of Part; text in part.text
     async for event in runner.run_async(
         user_id="orchestrator",
         session_id=adk_session_id,
         new_message=user_msg,
     ):
-        # Handle tool calls
-        if getattr(event, "is_tool_call", False) and getattr(event, "tool_call", None):
-            tc = event.tool_call
+        for fc in (event.get_function_calls() or []):
             writer.write(
                 agent=agent_name,
                 round_idx=round_idx,
                 action="tool_call",
-                tool_name=tc.name,
-                tool_args=dict(tc.args) if tc.args else {},
-                notes=f"{agent_name} called {tc.name}",
+                tool_name=fc.name,
+                tool_args=dict(fc.args) if fc.args else {},
+                notes=f"{agent_name} called {fc.name}",
             )
-        elif getattr(event, "is_tool_response", False) and getattr(event, "tool_response", None):
-            tr = event.tool_response
-            result = tr.result if isinstance(tr.result, dict) else {"value": tr.result}
+
+        for fr in (event.get_function_responses() or []):
+            raw = getattr(fr, "response", None) or getattr(fr, "result", None)
+            result = raw if isinstance(raw, dict) else {"value": raw}
             row_count = result.get("row_count")
-            summary = (f"{tr.name} returned {row_count} rows"
+            summary = (f"{fr.name} returned {row_count} rows"
                        if row_count is not None
-                       else f"{tr.name} returned a result")
+                       else f"{fr.name} returned a result")
             writer.write(
                 agent=agent_name,
                 round_idx=round_idx,
                 action="tool_call",
-                tool_name=tr.name,
+                tool_name=fr.name,
                 tool_result_summary=summary,
                 tool_result_full=result,
                 bq_job_id=result.get("bq_job_id"),
             )
-        elif getattr(event, "is_final_response", False):
-            # The structured JSON output from the agent.
-            content = event.final_response
-            if isinstance(content, str):
-                response_json = json.loads(content)
-            elif hasattr(content, "model_dump"):
-                response_json = content.model_dump()
-            elif isinstance(content, dict):
-                response_json = content
+
+        if event.is_final_response():
+            text_parts = []
+            if event.content and event.content.parts:
+                for part in event.content.parts:
+                    if getattr(part, "text", None):
+                        text_parts.append(part.text)
+            text = "".join(text_parts).strip()
+            if text:
+                try:
+                    response_json = json.loads(text)
+                except json.JSONDecodeError:
+                    response_json = {"raw_response": text}
 
     latency_ms = _now_ms() - t0
 

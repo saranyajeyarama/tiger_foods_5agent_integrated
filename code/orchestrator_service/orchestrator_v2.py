@@ -34,6 +34,7 @@ from typing import Any
 
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
+from google.genai import types as genai_types
 
 from agents_v2 import get_agent_v2, SPECIALIST_AGENTS
 from firestore_client import StepWriter, update_session
@@ -67,58 +68,69 @@ async def _invoke_specialist(
     Firestore. Returns the parsed structured signal."""
     agent = get_agent_v2(agent_name)
     session_svc = InMemorySessionService()
+    app_name = f"tiger-agents-v2-{agent_name}"
     runner = Runner(
         agent=agent,
         session_service=session_svc,
-        app_name=f"tiger-agents-v2-{agent_name}",
+        app_name=app_name,
     )
     t0 = _now_ms()
-    user_msg = json.dumps(prompt_payload)
+    adk_session_id = f"adk-{writer.session_id}-{agent_name}-r{round_idx}"
+    user_msg = genai_types.Content(
+        role="user",
+        parts=[genai_types.Part(text=json.dumps(prompt_payload))],
+    )
     response_json: dict | None = None
+
+    await session_svc.create_session(
+        app_name=app_name,
+        user_id="orchestrator-v2",
+        session_id=adk_session_id,
+    )
 
     async for event in runner.run_async(
         user_id="orchestrator-v2",
-        session_id=f"adk-{writer.session_id}-{agent_name}-r{round_idx}",
+        session_id=adk_session_id,
         new_message=user_msg,
     ):
-        if getattr(event, "is_tool_call", False) and getattr(event,
-                                                              "tool_call",
-                                                              None):
-            tc = event.tool_call
+        for fc in (event.get_function_calls() or []):
             writer.write(
                 agent=agent_name,
                 round_idx=round_idx,
                 action="tool_call",
-                tool_name=tc.name,
-                tool_args=dict(tc.args) if tc.args else {},
-                notes=f"{agent_name} called {tc.name}",
+                tool_name=fc.name,
+                tool_args=dict(fc.args) if fc.args else {},
+                notes=f"{agent_name} called {fc.name}",
             )
-        elif getattr(event, "is_tool_response", False) and getattr(event,
-                                                                    "tool_response",
-                                                                    None):
-            tr = event.tool_response
-            result = tr.result if isinstance(tr.result, dict) \
-                else {"value": tr.result}
+
+        for fr in (event.get_function_responses() or []):
+            raw = getattr(fr, "response", None) or getattr(fr, "result", None)
+            result = raw if isinstance(raw, dict) else {"value": raw}
             rc = result.get("row_count")
-            summary = (f"{tr.name} returned {rc} rows"
-                       if rc is not None else f"{tr.name} returned a result")
+            summary = (f"{fr.name} returned {rc} rows"
+                       if rc is not None else f"{fr.name} returned a result")
             writer.write(
                 agent=agent_name,
                 round_idx=round_idx,
                 action="tool_call",
-                tool_name=tr.name,
+                tool_name=fr.name,
                 tool_result_summary=summary,
                 tool_result_full=result,
                 bq_job_id=result.get("bq_job_id"),
             )
-        elif getattr(event, "is_final_response", False):
-            content = event.final_response
-            if isinstance(content, str):
-                response_json = json.loads(content)
-            elif hasattr(content, "model_dump"):
-                response_json = content.model_dump()
-            elif isinstance(content, dict):
-                response_json = content
+
+        if event.is_final_response():
+            text_parts = []
+            if event.content and event.content.parts:
+                for part in event.content.parts:
+                    if getattr(part, "text", None):
+                        text_parts.append(part.text)
+            text = "".join(text_parts).strip()
+            if text:
+                try:
+                    response_json = json.loads(text)
+                except json.JSONDecodeError:
+                    response_json = {"raw_response": text}
 
     latency_ms = _now_ms() - t0
     writer.write(

@@ -53,30 +53,30 @@ def _run_query(sql: str, params: list) -> list[dict]:
 # TOOL 1 — get_otif_performance
 # ---------------------------------------------------------------------------
 def get_otif_performance(
-    customer_kunnr: str = "",
-    start_date: str = "",
-    end_date: str = "",
-    group_by: str = "customer",
+    customer_kunnr: str,
+    start_date: str,
+    end_date: str,
+    group_by: str,
 ) -> dict:
     """Returns OTIF performance from fct_otif, optionally aggregated.
 
     Args:
-        customer_kunnr: SAP customer number to filter to. None = all customers.
-        start_date: ISO date YYYY-MM-DD. Inclusive. None = first of current month.
-        end_date: ISO date YYYY-MM-DD. Inclusive. None = today.
-        group_by: Aggregation dimension. customer | carrier | lane | week.
+        customer_kunnr: SAP customer number to filter to. Pass empty string for all customers.
+        start_date: ISO date YYYY-MM-DD inclusive. Pass empty string for first of current month.
+        end_date: ISO date YYYY-MM-DD inclusive. Pass empty string for today.
+        group_by: Aggregation dimension: customer | carrier | lane | week. Default customer.
 
     Returns:
         dict with rows, view_queried, row_count.
     """
+    customer_kunnr = customer_kunnr or ""
+    start_date = start_date or (date.today().replace(day=1)).isoformat()
+    end_date = end_date or date.today().isoformat()
+    group_by = group_by or "customer"
     where = ["delivery_date BETWEEN @start AND @end"]
     params = [
-        bigquery.ScalarQueryParameter(
-            "start", "DATE",
-            start_date if start_date else (date.today().replace(day=1)).isoformat()),
-        bigquery.ScalarQueryParameter(
-            "end", "DATE",
-            end_date if end_date else date.today().isoformat()),
+        bigquery.ScalarQueryParameter("start", "DATE", start_date),
+        bigquery.ScalarQueryParameter("end", "DATE", end_date),
     ]
     if customer_kunnr:
         where.append("customer_kunnr = @kunnr")
@@ -114,15 +114,17 @@ def get_otif_performance(
 # TOOL 2 — get_cfr_weekly
 # ---------------------------------------------------------------------------
 def get_cfr_weekly(
-    weeks_back: int = 8,
-    customer_kunnr: str = "",
+    weeks_back: int,
+    customer_kunnr: str,
 ) -> dict:
     """Returns weekly Case Fill Rate trend.
 
     Args:
-        weeks_back: Number of trailing weeks. Default 8.
-        customer_kunnr: Optional customer filter. None = network total.
+        weeks_back: Number of trailing weeks. Pass 0 to use default of 8.
+        customer_kunnr: Customer filter. Pass empty string for network total.
     """
+    weeks_back = weeks_back or 8
+    customer_kunnr = customer_kunnr or ""
     where = ["iso_week >= FORMAT_DATE('%G-W%V', "
              "DATE_SUB(CURRENT_DATE(), INTERVAL @weeks WEEK))"]
     params = [bigquery.ScalarQueryParameter("weeks", "INT64", weeks_back)]
@@ -150,17 +152,19 @@ def get_cfr_weekly(
 # TOOL 3 — get_inventory_positions
 # ---------------------------------------------------------------------------
 def get_inventory_positions(
-    plant: str = "",
-    material_matnr: str = "",
-    include_shelf_life: bool = True,
+    plant: str,
+    material_matnr: str,
+    include_shelf_life: bool,
 ) -> dict:
     """Returns current inventory positions by plant and material.
 
     Args:
-        plant: WERKS plant code to filter. None = all plants.
-        material_matnr: MATNR to filter. None = all materials.
-        include_shelf_life: If True, include earliest expiration date.
+        plant: WERKS plant code to filter. Pass empty string for all plants.
+        material_matnr: MATNR to filter. Pass empty string for all materials.
+        include_shelf_life: Pass true to include earliest expiration date.
     """
+    plant = plant or ""
+    material_matnr = material_matnr or ""
     where = ["movement_date = CURRENT_DATE()"]
     params = []
     if plant:
@@ -201,8 +205,8 @@ def get_inventory_positions(
 # ---------------------------------------------------------------------------
 def get_shelf_life_risk(
     customer_kunnr: str,
-    material_matnr: str = "",
-    horizon_days: int = 30,
+    material_matnr: str,
+    horizon_days: int,
 ) -> dict:
     """Identifies inventory at MRSL conflict risk for a specific customer.
 
@@ -211,9 +215,11 @@ def get_shelf_life_risk(
 
     Args:
         customer_kunnr: SAP customer number. Required (MRSL is customer-specific).
-        material_matnr: Optional material filter.
-        horizon_days: How many days forward to consider.
+        material_matnr: Material filter. Pass empty string for all materials.
+        horizon_days: Days forward to consider. Pass 0 to use default of 30.
     """
+    material_matnr = material_matnr or ""
+    horizon_days = horizon_days or 30
     where = [
         "i.movement_date = CURRENT_DATE()",
         "c.customer_kunnr = @kunnr",
@@ -254,16 +260,18 @@ def get_shelf_life_risk(
 # ---------------------------------------------------------------------------
 def get_chargeback_risk(
     customer_kunnr: str,
-    shipment_date: str = "",
-    fine_rate_override_usd_per_cs: float = 0.0,
+    shipment_date: str,
+    fine_rate_override_usd_per_cs: float,
 ) -> dict:
     """Returns customer fine rates and chargeback exposure.
 
     Args:
         customer_kunnr: SAP customer number. Required.
-        shipment_date: ISO date. Optional. Used to look up applicable fine schedule.
-        fine_rate_override_usd_per_cs: Optional override.
+        shipment_date: ISO date for fine schedule lookup. Pass empty string to skip.
+        fine_rate_override_usd_per_cs: Override fine rate. Pass 0.0 to use contract rate.
     """
+    shipment_date = shipment_date or ""
+    fine_rate_override_usd_per_cs = fine_rate_override_usd_per_cs or 0.0
     params = [bigquery.ScalarQueryParameter("kunnr", "STRING", customer_kunnr)]
     sql = f"""
       WITH cust AS (
@@ -364,10 +372,18 @@ def get_transfer_cost_comparison(
 # ---------------------------------------------------------------------------
 def get_forecast_accuracy(
     customer_kunnr: str,
-    material_matnr: str = "",
-    lag_weeks: int = 4,
+    material_matnr: str,
+    lag_weeks: int,
 ) -> dict:
-    """Returns Anaplan forecast accuracy and bias at a given lag."""
+    """Returns Anaplan forecast accuracy and bias at a given lag.
+
+    Args:
+        customer_kunnr: SAP customer number. Required.
+        material_matnr: Material filter. Pass empty string for all materials.
+        lag_weeks: Forecast lag to evaluate. Pass 0 to use default of 4.
+    """
+    material_matnr = material_matnr or ""
+    lag_weeks = lag_weeks or 4
     where = ["customer_kunnr = @kunnr", "lag_weeks = @lag"]
     params = [
         bigquery.ScalarQueryParameter("kunnr", "STRING", customer_kunnr),
@@ -400,16 +416,24 @@ def get_forecast_accuracy(
 # TOOL 8 — get_allocation_history
 # ---------------------------------------------------------------------------
 def get_allocation_history(
-    customer_kunnr: str = "",
-    material_matnr: str = "",
-    lookback_days: int = 90,
+    customer_kunnr: str,
+    material_matnr: str,
+    lookback_days: int,
 ) -> dict:
     """Returns prior allocation decisions for similar contexts.
 
     Reads from BOTH tiger_semantic.fct_allocation_decisions (historical, from
     SAP Z-tables) AND tiger_decisions.fct_allocation_decisions (this system's
     own decisions).
+
+    Args:
+        customer_kunnr: Customer filter. Pass empty string for all customers.
+        material_matnr: Material filter. Pass empty string for all materials.
+        lookback_days: Days to look back. Pass 0 to use default of 90.
     """
+    customer_kunnr = customer_kunnr or ""
+    material_matnr = material_matnr or ""
+    lookback_days = lookback_days or 90
     where_sem = ["decision_date >= DATE_SUB(CURRENT_DATE(), INTERVAL @days DAY)"]
     where_dec = [
         "DATE(decision_timestamp) >= DATE_SUB(CURRENT_DATE(), INTERVAL @days DAY)"
@@ -463,14 +487,21 @@ def get_allocation_history(
 # TOOL 9 — get_active_alerts
 # ---------------------------------------------------------------------------
 def get_active_alerts(
-    severity_min: str = "MEDIUM",
-    limit: int = 20,
+    severity_min: str,
+    limit: int,
 ) -> dict:
-    """Returns currently active alerts ranked by exposure."""
+    """Returns currently active alerts ranked by exposure.
+
+    Args:
+        severity_min: Minimum severity to include: LOW | MEDIUM | HIGH | CRITICAL. Default MEDIUM.
+        limit: Maximum rows to return. Pass 0 to use default of 20.
+    """
+    severity_min = (severity_min or "MEDIUM").upper()
+    limit = limit or 20
     sev_order = {"LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
     params = [
         bigquery.ScalarQueryParameter("min_sev", "INT64",
-                                       sev_order.get(severity_min.upper(), 2)),
+                                       sev_order.get(severity_min, 2)),
         bigquery.ScalarQueryParameter("lim", "INT64", limit),
     ]
     sql = f"""
@@ -516,14 +547,20 @@ def log_decision(
     session_id: str,
     decision_payload_json: str,
     human_decision: str,
-    human_decision_by: str = "",
-    rejection_reason: str = "",
+    human_decision_by: str,
+    rejection_reason: str,
 ) -> dict:
     """Writes the final agentic decision to the writable decision log.
 
-    Only called by the Orchestrator AFTER human approval/rejection. Not bound
-    to any agent's tool surface to prevent premature writes.
+    Args:
+        session_id: Session identifier.
+        decision_payload_json: Full executor action card as JSON string.
+        human_decision: approved | rejected | cancelled.
+        human_decision_by: User ID who made the decision. Pass empty string if unknown.
+        rejection_reason: Reason for rejection. Pass empty string if approved.
     """
+    human_decision_by = human_decision_by or ""
+    rejection_reason = rejection_reason or ""
     decision_id = str(uuid.uuid4())
     payload = _json.loads(decision_payload_json)
     action = payload.get("recommended_action", {}) or {}

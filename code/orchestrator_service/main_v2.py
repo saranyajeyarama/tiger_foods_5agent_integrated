@@ -17,6 +17,25 @@ import os
 import uuid
 from datetime import datetime, timezone
 
+# Load .env before any google.adk import creates a genai client.
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
+# Configure ADK auth:
+# - Set GOOGLE_API_KEY in .env for Gemini Developer API (local dev)
+# - Otherwise fall back to Vertex AI via ADC / service-account (Cloud Run)
+if not os.environ.get("GOOGLE_API_KEY"):
+    os.environ.setdefault("GOOGLE_GENAI_USE_VERTEXAI", "TRUE")
+    os.environ.setdefault(
+        "GOOGLE_CLOUD_PROJECT", os.environ.get("PROJECT_ID", "resilience-riskradar")
+    )
+    os.environ.setdefault(
+        "GOOGLE_CLOUD_LOCATION", os.environ.get("REGION", "us-central1")
+    )
+
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 
 from firestore_client import create_session, get_session
